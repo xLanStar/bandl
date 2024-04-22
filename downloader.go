@@ -20,7 +20,7 @@ type Downloader struct {
 	Config          *DownloaderConfig
 	Trackers        []ITracker
 	DownloadLogs    []DownloadLog
-	downloadLogsMap map[string]bool
+	downloadLogsMap map[string]*DownloadLog
 	saved           bool
 }
 
@@ -34,30 +34,31 @@ func (d *Downloader) AddTorrentFromTrackResult(trackResult TrackResult) (*torren
 		return nil, err
 	}
 
+	hash := mi.HashInfoBytes().HexString()
+	downloadLog, downloaded := d.downloadLogsMap[hash]
+	if downloaded {
+		log.Println("Skip", hash, downloadLog.Name)
+		return nil, nil
+	}
+
 	t, err := d.client.AddTorrent(mi)
 	if err != nil {
 		return nil, err
 	}
 
 	<-t.GotInfo()
-	hash := t.InfoHash().HexString()
-	if _, ok := d.downloadLogsMap[hash]; ok {
-		log.Println("Skip", hash, t.Info().Name)
-		return nil, nil
-	}
-
-	log.Println("Download", hash, t.Info().Name)
+	log.Println("Download", hash, t.Name())
 	t.DownloadAll()
 	go func() {
 		defer t.Drop()
 		<-t.Complete.On()
-		log.Println("Download complete", hash, t.Info().Name)
+		log.Println("Download complete", hash, t.Name())
 		d.DownloadLogs = append(d.DownloadLogs, DownloadLog{
 			Hash:   hash,
 			Name:   t.Name(),
 			Source: trackResult.Source,
 		})
-		d.downloadLogsMap[hash] = true
+		d.downloadLogsMap[hash] = &d.DownloadLogs[len(d.DownloadLogs)-1]
 		d.saved = false
 	}()
 	return t, nil
@@ -109,9 +110,9 @@ func NewDownloader(config *DownloaderConfig) *Downloader {
 	client, _ := torrent.NewClient(cfg)
 
 	downloadLogs := ReadDownloadLogFile(config.DownloadFile)
-	downloadLogMap := make(map[string]bool, len(downloadLogs))
+	downloadLogMap := make(map[string]*DownloadLog, len(downloadLogs))
 	for _, downloadLog := range downloadLogs {
-		downloadLogMap[downloadLog.Hash] = true
+		downloadLogMap[downloadLog.Hash] = &downloadLog
 	}
 
 	return &Downloader{
