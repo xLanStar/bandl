@@ -28,6 +28,11 @@ func (d *Downloader) AddTracker(tracker ITracker) {
 	d.Trackers = append(d.Trackers, tracker)
 }
 
+func (d *Downloader) HasDownloaded(hash string) bool {
+	_, ok := d.downloadLogsMap[hash]
+	return ok
+}
+
 func (d *Downloader) AddTorrentFromTrackResult(trackResult TrackResult) (*torrent.Torrent, error) {
 	mi, err := GetMetaDataFromFileUrl(trackResult.Url)
 	if err != nil {
@@ -35,9 +40,8 @@ func (d *Downloader) AddTorrentFromTrackResult(trackResult TrackResult) (*torren
 	}
 
 	hash := mi.HashInfoBytes().HexString()
-	downloadLog, downloaded := d.downloadLogsMap[hash]
-	if downloaded {
-		log.Println("Skip", hash, downloadLog.Name)
+	if d.HasDownloaded(hash) {
+		log.Println("Skip downloaded", trackResult)
 		return nil, nil
 	}
 
@@ -67,9 +71,24 @@ func (d *Downloader) AddTorrentFromTrackResult(trackResult TrackResult) (*torren
 func (d *Downloader) Track() {
 	log.Println("Tracking...")
 	for _, tracker := range d.Trackers {
-		results := tracker.Track()
-		log.Println("Found", len(results), "track results")
-		for _, result := range results {
+		// Load tracking items
+		trackingItems := tracker.LoadTrackFile()
+
+		// Track items
+		trackResults := make([]TrackResult, 0)
+		for _, trackingItem := range trackingItems {
+			log.Println("Track", trackingItem)
+			trackResults = append(trackResults, tracker.TrackItem(trackingItem)...)
+		}
+		log.Println("Found", len(trackResults), "track results")
+
+		// Add torrents
+		for _, result := range trackResults {
+			if tracker.hasTracked(result) {
+				log.Println("Skip tracked:", result.Url)
+				continue
+			}
+			tracker.addTracked(result)
 			d.AddTorrentFromTrackResult(result)
 		}
 	}

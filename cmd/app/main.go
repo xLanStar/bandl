@@ -8,7 +8,8 @@ import (
 	"time"
 
 	_ "github.com/joho/godotenv/autoload"
-	bandl "github.com/xLanStar/bandl"
+	"github.com/xLanStar/bandl"
+	"github.com/xLanStar/bandl/internal/tracker/bangumi"
 )
 
 var (
@@ -23,14 +24,13 @@ func init() {
 	bandl.InitConfig("downloader.yaml", downloaderConfig)
 	downloader = bandl.NewDownloader(downloaderConfig)
 
-	trackerConfig := &bandl.BangumiTrackerConfig{
-		TrackFile: "bangumiTracks.txt",
-	}
-	bandl.InitConfig("bangumiTracker.yaml", trackerConfig)
-	bangumiTracker := &bandl.BangumiTracker{
-		Config: trackerConfig,
+	bangumiTracker := &bangumi.BangumiTracker{
+		Tracker: bandl.Tracker{
+			TrackFilePath: "tracks-bangumi.txt",
+		},
 	}
 	bangumiTracker.Init()
+	log.Println("test", bangumiTracker.LoadTrackFile())
 	downloader.AddTracker(bangumiTracker)
 }
 
